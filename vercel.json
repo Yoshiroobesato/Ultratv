@@ -1,0 +1,9 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "api/extract-url.js",
+      "use": "@vercel/node"
+    }
+  ]
+}
