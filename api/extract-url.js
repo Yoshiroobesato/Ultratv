@@ -1,28 +1,46 @@
-const axios = require("axios");
-const cheerio = require("cheerio");
+const express = require('express');
+const puppeteer = require('puppeteer');
+const app = express();
 
-module.exports = async (req, res) => {
-  const targetURL = "https://streamtp2.com/global1.php?stream=espn1"; // Reemplaza con la URL que deseas scrapear
+app.get('/m3u8', async (req, res) => {
+  const { url } = req.query;
+  if (!url) return res.status(400).json({ error: 'URL faltante' });
 
+  let browser;
   try {
-    // Obtiene el contenido HTML de la página
-    const response = await axios.get(targetURL);
-    const html = response.data;
+    browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    });
 
-    // Usa Cheerio para analizar el HTML
-    const $ = cheerio.load(html);
-    const scriptContent = $("script").text();
+    const page = await browser.newPage();
+    let foundUrl = null;
 
-    // Extrae la variable playbackURL con una expresión regular
-    const playbackURLMatch = scriptContent.match(/var playbackURL\s*=\s*"([^"]+)"/);
-    if (playbackURLMatch) {
-      const playbackURL = playbackURLMatch[1];
-      return res.json({ playbackURL });
+    page.on('request', request => {
+      const reqUrl = request.url();
+      if (reqUrl.includes('.m3u8') && !foundUrl) {
+        foundUrl = reqUrl;
+      }
+    });
+
+    await page.goto(url, { waitUntil: 'networkidle2' });
+    await page.waitForTimeout(7000);
+
+    if (foundUrl) {
+      res.json({ m3u8: foundUrl });
     } else {
-      return res.status(404).json({ error: "playbackURL not found" });
+      res.status(404).json({ error: 'No se encontró archivo M3U8' });
     }
-  } catch (error) {
-    console.error("Error fetching or parsing the page:", error);
-    return res.status(500).json({ error: "Internal Server Error" });
+  } catch (err) {
+    res.status(500).json({ error: 'Error interno', details: err.message });
+  } finally {
+    if (browser) await browser.close();
   }
-};
+});
+
+app.get('/', (req, res) => {
+  res.send('API de extracción de M3U8 funcionando.');
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Servidor corriendo en puerto ${PORT}`));
